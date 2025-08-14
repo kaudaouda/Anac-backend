@@ -5,7 +5,7 @@ import uuid
 
 class UserManager(BaseUserManager):
     """
-    Gestionnaire personnalisé pour le modèle User
+    Custom user manager for the User model
     """
     
     def create_user(self, email, password=None, **extra_fields):
@@ -15,14 +15,11 @@ class UserManager(BaseUserManager):
         if not email:
             raise ValueError('L\'email est requis')
         
-        # Normaliser l'email
         email = self.normalize_email(email)
         
-        # Générer un username unique si non fourni
         if 'username' not in extra_fields:
             extra_fields['username'] = f"user_{uuid.uuid4().hex[:8]}"
         
-        # Créer l'utilisateur
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
@@ -46,7 +43,7 @@ class UserManager(BaseUserManager):
 
 class User(AbstractUser):
     """
-    Modèle utilisateur personnalisé avec UUID et champs supplémentaires
+    Custom user model with UUID and additional fields
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     email = models.EmailField(unique=True, verbose_name="Adresse email")
@@ -55,11 +52,10 @@ class User(AbstractUser):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Date de création")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Dernière modification")
     
-    # Remplacer username par email pour la connexion
+    # Replace username by email for authentication
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['username', 'first_name', 'last_name']
     
-    # Utiliser notre gestionnaire personnalisé
     objects = UserManager()
     
     class Meta:
@@ -75,7 +71,6 @@ class User(AbstractUser):
         return f"{self.first_name} {self.last_name}".strip()
     
     def save(self, *args, **kwargs):
-        # Générer un username unique si non fourni
         if not self.username:
             self.username = f"user_{uuid.uuid4().hex[:8]}"
         super().save(*args, **kwargs)
@@ -83,7 +78,7 @@ class User(AbstractUser):
 
 class UserProfile(models.Model):
     """
-    Profil utilisateur étendu
+    User profile model
     """
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True, verbose_name="Photo de profil")
@@ -105,7 +100,7 @@ class UserProfile(models.Model):
 
 class PasswordResetToken(models.Model):
     """
-    Token pour la réinitialisation du mot de passe
+    Password reset token model
     """
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='password_reset_tokens')
     token = models.CharField(max_length=100, unique=True)
