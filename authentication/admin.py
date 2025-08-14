@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.html import format_html
-from .models import User, UserProfile, PasswordResetToken
+from .models import User, UserProfile, PasswordResetToken, Drone, DroneFlight
 
 
 class UserProfileInline(admin.StackedInline):
@@ -96,3 +96,84 @@ class PasswordResetTokenAdmin(admin.ModelAdmin):
         return obj.is_expired
     is_expired.boolean = True
     is_expired.short_description = 'Expiré'
+
+
+@admin.register(Drone)
+class DroneAdmin(admin.ModelAdmin):
+    """
+    Administration des drones
+    """
+    list_display = ['name', 'user_full_name', 'user_email', 'drone_type', 'status', 'is_maintenance_due', 'created_at']
+    list_filter = ['drone_type', 'status', 'created_at', 'purchase_date']
+    search_fields = ['name', 'model', 'brand', 'serial_number', 'user__email', 'user__first_name', 'user__last_name']
+    readonly_fields = ['id', 'user', 'created_at', 'updated_at', 'is_maintenance_due', 'age_in_days']
+    ordering = ['-created_at']
+    
+    fieldsets = (
+        ('Informations de base', {
+            'fields': ('name', 'model', 'brand', 'drone_type', 'serial_number')
+        }),
+        ('Spécifications techniques', {
+            'fields': ('weight', 'max_payload', 'max_flight_time', 'max_range', 'max_altitude')
+        }),
+        ('Gestion et statut', {
+            'fields': ('status', 'registration_number', 'insurance_info')
+        }),
+        ('Maintenance', {
+            'fields': ('maintenance_notes', 'purchase_date', 'last_maintenance', 'next_maintenance')
+        }),
+        ('Média', {
+            'fields': ('photo',)
+        }),
+        ('Informations système', {
+            'fields': ('id', 'user', 'created_at', 'updated_at', 'is_maintenance_due', 'age_in_days'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def user_full_name(self, obj):
+        return obj.user.full_name
+    user_full_name.short_description = 'Propriétaire'
+    
+    def user_email(self, obj):
+        return obj.user.email
+    user_email.short_description = 'Email'
+    
+    def is_maintenance_due(self, obj):
+        if obj.is_maintenance_due:
+            return format_html('<span style="color: red; font-weight: bold;">⚠️ Maintenance requise</span>')
+        return format_html('<span style="color: green;">✓ OK</span>')
+    is_maintenance_due.short_description = 'Maintenance'
+
+
+@admin.register(DroneFlight)
+class DroneFlightAdmin(admin.ModelAdmin):
+    """
+    Administration des vols de drones
+    """
+    list_display = ['drone_name', 'pilot_full_name', 'flight_date', 'duration', 'location', 'purpose']
+    list_filter = ['flight_date', 'drone__drone_type', 'drone__user']
+    search_fields = ['drone__name', 'pilot__email', 'pilot__first_name', 'pilot__last_name', 'location', 'purpose']
+    readonly_fields = ['id', 'drone', 'pilot', 'created_at']
+    ordering = ['-flight_date']
+    
+    fieldsets = (
+        ('Informations de vol', {
+            'fields': ('drone', 'pilot', 'flight_date', 'duration', 'location')
+        }),
+        ('Détails', {
+            'fields': ('purpose', 'weather_conditions', 'notes')
+        }),
+        ('Informations système', {
+            'fields': ('id', 'created_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def drone_name(self, obj):
+        return obj.drone.name
+    drone_name.short_description = 'Drone'
+    
+    def pilot_full_name(self, obj):
+        return obj.pilot.full_name
+    pilot_full_name.short_description = 'Pilote'
