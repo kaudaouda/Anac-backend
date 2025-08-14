@@ -1,7 +1,30 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
-from .models import User, UserProfile, PasswordResetToken
+from datetime import datetime
+from .models import User, UserProfile, PasswordResetToken, Drone, DroneFlight
+
+
+def validate_date_format(value):
+    if value:
+        try:
+            if isinstance(value, str):
+                datetime.strptime(value, '%Y-%m-%d')
+            return value
+        except ValueError:
+            raise serializers.ValidationError("Le format de date doit être YYYY-MM-DD")
+    return value
+
+
+def validate_datetime_format(value):
+    if value:
+        try:
+            if isinstance(value, str):
+                datetime.fromisoformat(value.replace('Z', '+00:00'))
+            return value
+        except ValueError:
+            raise serializers.ValidationError("Le format de date et heure doit être YYYY-MM-DDTHH:MM")
+    return value
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
@@ -24,7 +47,6 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     
     def create(self, validated_data):
         validated_data.pop('confirm_password')
-        # Utiliser la méthode create_user de notre UserManager personnalisé
         user = User.objects.create_user(**validated_data)
         UserProfile.objects.create(user=user)
         return user
@@ -90,3 +112,87 @@ class PasswordResetRequestSerializer(serializers.Serializer):
         if not User.objects.filter(email=value, is_active=True).exists():
             raise serializers.ValidationError("Aucun utilisateur actif trouvé avec cet email.")
         return value
+
+
+class UserProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserProfile
+        fields = ['avatar', 'bio', 'birth_date', 'address', 'city', 'country', 'postal_code']
+
+
+class UserSerializer(serializers.ModelSerializer):
+    profile = UserProfileSerializer(read_only=True)
+    
+    class Meta:
+        model = User
+        fields = ['id', 'email', 'username', 'first_name', 'last_name', 'phone', 'is_verified', 'created_at', 'profile']
+        read_only_fields = ['id', 'is_verified', 'created_at']
+
+
+class DroneSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+    is_maintenance_due = serializers.ReadOnlyField()
+    age_in_days = serializers.ReadOnlyField()
+    
+    class Meta:
+        model = Drone
+        fields = [
+            'id', 'user', 'name', 'model', 'brand', 'drone_type', 'serial_number',
+            'weight', 'max_payload', 'max_flight_time', 'max_range', 'max_altitude',
+            'status', 'registration_number', 'insurance_info', 'maintenance_notes',
+            'purchase_date', 'last_maintenance', 'next_maintenance', 'photo',
+            'created_at', 'updated_at', 'is_maintenance_due', 'age_in_days'
+        ]
+        read_only_fields = ['id', 'user', 'created_at', 'updated_at', 'is_maintenance_due', 'age_in_days']
+
+
+class DroneCreateSerializer(serializers.ModelSerializer):
+    purchase_date = serializers.DateField(required=False, validators=[validate_date_format])
+    last_maintenance = serializers.DateField(required=False, validators=[validate_date_format])
+    next_maintenance = serializers.DateField(required=False, validators=[validate_date_format])
+    
+    class Meta:
+        model = Drone
+        fields = [
+            'name', 'model', 'brand', 'drone_type', 'serial_number',
+            'weight', 'max_payload', 'max_flight_time', 'max_range', 'max_altitude',
+            'status', 'registration_number', 'insurance_info', 'maintenance_notes',
+            'purchase_date', 'last_maintenance', 'next_maintenance', 'photo'
+        ]
+    
+    def to_internal_value(self, data):
+        if data:
+            for date_field in ['purchase_date', 'last_maintenance', 'next_maintenance']:
+                if date_field in data and data[date_field] == '':
+                    data[date_field] = None
+        return super().to_internal_value(data)
+
+
+class DroneFlightSerializer(serializers.ModelSerializer):
+    drone = DroneSerializer(read_only=True)
+    pilot = UserSerializer(read_only=True)
+    
+    class Meta:
+        model = DroneFlight
+        fields = [
+            'id', 'drone', 'pilot', 'flight_date', 'duration', 'location',
+            'purpose', 'weather_conditions', 'notes', 'created_at'
+        ]
+        read_only_fields = ['id', 'drone', 'pilot', 'created_at']
+
+
+class DroneFlightCreateSerializer(serializers.ModelSerializer):
+    flight_date = serializers.DateTimeField(validators=[validate_datetime_format])
+    
+    class Meta:
+        model = DroneFlight
+        fields = [
+            'drone', 'flight_date', 'duration', 'location',
+            'purpose', 'weather_conditions', 'notes'
+        ]
+    
+    def to_internal_value(self, data):
+        if data:
+            if 'flight_date' in data and data['flight_date'] == '':
+                data['flight_date'] = None
+        return super().to_internal_value(data)

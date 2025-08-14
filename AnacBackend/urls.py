@@ -21,7 +21,14 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
     TokenVerifyView,
 )
+from rest_framework.routers import DefaultRouter
 from . import views
+from authentication.views import DroneViewSet, DroneFlightViewSet
+
+# for ViewSets
+router = DefaultRouter()
+router.register(r'drones', DroneViewSet, basename='drone')
+router.register(r'flights', DroneFlightViewSet, basename='droneflight')
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -38,4 +45,7 @@ urlpatterns = [
     
     # Authentication API
     path('api/auth/', include('authentication.urls')),
+    
+    # Drone API URLs
+    path('api/', include(router.urls)),
 ]

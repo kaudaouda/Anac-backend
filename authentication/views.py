@@ -1,26 +1,34 @@
-from rest_framework import status, generics, permissions
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework import status, generics, permissions, viewsets
+from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django.contrib.auth import authenticate, login, logout
 from django.utils import timezone
 from datetime import timedelta
+from django.shortcuts import get_object_or_404
 import uuid
+from django.db import models
+import logging
+
+# Configuration du logging
+logger = logging.getLogger(__name__)
 
 from .serializers import (
     UserRegistrationSerializer,
     UserLoginSerializer,
     UserDetailSerializer,
     ChangePasswordSerializer,
-    PasswordResetRequestSerializer
+    PasswordResetRequestSerializer,
+    DroneSerializer, DroneCreateSerializer,
+    DroneFlightSerializer, DroneFlightCreateSerializer
 )
-from .models import User, PasswordResetToken
+from .models import User, PasswordResetToken, Drone, DroneFlight
 
 
 class UserRegistrationView(generics.CreateAPIView):
     """
-    Vue pour l'inscription d'un nouvel utilisateur
+    View for user registration
     """
     serializer_class = UserRegistrationSerializer
     permission_classes = [permissions.AllowAny]
@@ -50,7 +58,7 @@ class UserRegistrationView(generics.CreateAPIView):
 
 class UserLoginView(generics.GenericAPIView):
     """
-    Vue pour la connexion utilisateur
+    View for user login
     """
     serializer_class = UserLoginSerializer
     permission_classes = [permissions.AllowAny]
@@ -84,7 +92,7 @@ class UserLoginView(generics.GenericAPIView):
 
 class UserLogoutView(generics.GenericAPIView):
     """
-    Vue pour la déconnexion utilisateur
+    View for user logout
     """
     permission_classes = [permissions.IsAuthenticated]
     
@@ -111,7 +119,7 @@ class UserLogoutView(generics.GenericAPIView):
 
 class UserProfileView(generics.RetrieveUpdateAPIView):
     """
-    Vue pour récupérer et mettre à jour le profil utilisateur
+    View for retrieving and updating user profile
     """
     serializer_class = UserDetailSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -122,7 +130,7 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
 
 class ChangePasswordView(generics.GenericAPIView):
     """
-    Vue pour changer le mot de passe
+    View for changing password
     """
     serializer_class = ChangePasswordSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -132,14 +140,14 @@ class ChangePasswordView(generics.GenericAPIView):
         if serializer.is_valid():
             user = request.user
             
-            # Vérifier l'ancien mot de passe
+            # check old password
             if not user.check_password(serializer.validated_data['old_password']):
                 return Response({
                     'message': 'Ancien mot de passe incorrect',
                     'errors': {'old_password': ['L\'ancien mot de passe est incorrect']}
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # Changer le mot de passe
+            # change password
             user.set_password(serializer.validated_data['new_password'])
             user.save()
             
@@ -168,11 +176,11 @@ class PasswordResetRequestView(generics.GenericAPIView):
             try:
                 user = User.objects.get(email=email, is_active=True)
                 
-                # Générer un token unique
+
                 token = str(uuid.uuid4())
                 expires_at = timezone.now() + timedelta(hours=24)
                 
-                # Créer ou mettre à jour le token
+
                 reset_token, created = PasswordResetToken.objects.update_or_create(
                     user=user,
                     defaults={
@@ -182,12 +190,10 @@ class PasswordResetRequestView(generics.GenericAPIView):
                     }
                 )
                 
-                # Ici vous pouvez envoyer un email avec le token
-                # Pour l'instant, on retourne le token (en production, envoyez un email)
-                
+
                 return Response({
                     'message': 'Email de réinitialisation envoyé',
-                    'token': token  # En production, ne pas retourner le token
+                    'token': token  
                 }, status=status.HTTP_200_OK)
                 
             except User.DoesNotExist:
@@ -226,7 +232,7 @@ def refresh_token_view(request):
                 'message': 'Token de rafraîchissement requis'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Valider et rafraîchir le token
+
         token = RefreshToken(refresh_token)
         new_access_token = str(token.access_token)
         
@@ -240,3 +246,241 @@ def refresh_token_view(request):
             'message': 'Token de rafraîchissement invalide',
             'error': str(e)
         }, status=status.HTTP_400_BAD_REQUEST)
+
+
+class DroneViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing user's drones
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        """Return only the drones of the connected user"""
+        try:
+            return Drone.objects.filter(user=self.request.user)
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération des drones: {e}")
+            return Drone.objects.none()
+    
+    def get_serializer_class(self):
+        """Utilise le bon sérialiseur selon l'action"""
+        if self.action in ['create', 'update', 'partial_update']:
+            return DroneCreateSerializer
+        return DroneSerializer
+    
+    def create(self, request, *args, **kwargs):
+        """Create a new drone with error handling"""
+        try:
+            logger.info(f"Tentative de création de drone avec les données: {request.data}")
+            
+            serializer = self.get_serializer(data=request.data)
+            if serializer.is_valid():
+                drone = serializer.save(user=request.user)
+                logger.info(f"Drone créé avec succès: {drone.id}")
+                
+                return Response(
+                    serializer.data, 
+                    status=status.HTTP_201_CREATED
+                )
+            else:
+                logger.error(f"Erreurs de validation: {serializer.errors}")
+                return Response(
+                    {'error': 'Données invalides', 'details': serializer.errors}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
+        except Exception as e:
+            logger.error(f"Erreur inattendue lors de la création du drone: {e}")
+            return Response(
+                {'error': 'Erreur interne du serveur'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def list(self, request, *args, **kwargs):
+        """List drones with error handling"""
+        try:
+            queryset = self.get_queryset()
+            serializer = self.get_serializer(queryset, many=True)
+            return Response(serializer.data)
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération de la liste des drones: {e}")
+            return Response(
+                {'error': 'Erreur lors de la récupération des drones'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def perform_create(self, serializer):
+        """Assign automatically the connected user as owner"""
+        serializer.save(user=self.request.user)
+    
+    @action(detail=True, methods=['post'])
+    def update_status(self, request, pk=None):
+        """Mettre à jour le statut d'un drone"""
+        drone = self.get_object()
+        new_status = request.data.get('status')
+        
+        if new_status not in dict(Drone.STATUS_CHOICES):
+            return Response(
+                {'error': 'Statut invalide'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        drone.status = new_status
+        drone.save()
+        
+        return Response({
+            'message': f'Statut du drone {drone.name} mis à jour vers {new_status}',
+            'status': 'success'
+        })
+    
+    @action(detail=True, methods=['post'])
+    def schedule_maintenance(self, request, pk=None):
+        """Programmer une maintenance pour un drone"""
+        drone = self.get_object()
+        maintenance_date = request.data.get('maintenance_date')
+        
+        if not maintenance_date:
+            return Response(
+                {'error': 'Date de maintenance requise'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        drone.next_maintenance = maintenance_date
+        drone.save()
+        
+        return Response({
+            'message': f'Maintenance programmée pour {drone.name} le {maintenance_date}',
+            'status': 'success'
+        })
+
+
+class DroneFlightViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet pour gérer les vols de drones
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        """Retourne les vols des drones de l'utilisateur connecté"""
+        try:
+            return DroneFlight.objects.filter(
+                drone__user=self.request.user
+            ).select_related('drone', 'pilot')
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération des vols: {e}")
+            return DroneFlight.objects.none()
+    
+    def get_serializer_class(self):
+        """Utilise le bon sérialiseur selon l'action"""
+        if self.action in ['create', 'update', 'partial_update']:
+            return DroneFlightCreateSerializer
+        return DroneFlightSerializer
+    
+    def create(self, request, *args, **kwargs):
+        """Créer un nouveau vol avec gestion d'erreurs améliorée"""
+        try:
+            logger.info(f"Tentative de création de vol avec les données: {request.data}")
+            
+            serializer = self.get_serializer(data=request.data)
+            if serializer.is_valid():
+                # Vérifier que le drone appartient à l'utilisateur
+                drone_id = serializer.validated_data.get('drone')
+                if not drone_id:
+                    return Response(
+                        {'error': 'Le drone est requis'}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                try:
+                    drone = get_object_or_404(Drone, id=drone_id.id, user=request.user)
+                except Exception as e:
+                    logger.error(f"Erreur lors de la récupération du drone {drone_id.id}: {e}")
+                    return Response(
+                        {'error': 'Drone non trouvé ou non autorisé'}, 
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+                
+                # create the flight
+                flight = serializer.save(pilot=request.user)
+                logger.info(f"Vol créé avec succès: {flight.id}")
+                
+                return Response(
+                    serializer.data, 
+                    status=status.HTTP_201_CREATED
+                )
+            else:
+                logger.error(f"Erreurs de validation: {serializer.errors}")
+                return Response(
+                    {'error': 'Données invalides', 'details': serializer.errors}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
+        except Exception as e:
+            logger.error(f"Erreur inattendue lors de la création du vol: {e}")
+            return Response(
+                {'error': 'Erreur interne du serveur'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def list(self, request, *args, **kwargs):
+        """List flights with error handling"""
+        try:
+            queryset = self.get_queryset()
+            serializer = self.get_serializer(queryset, many=True)
+            return Response(serializer.data)
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération de la liste des vols: {e}")
+            return Response(
+                {'error': 'Erreur lors de la récupération des vols'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=False, methods=['get'])
+    def drone_stats(self, request):
+        """Get the statistics of flights by drone"""
+        try:
+            user_drones = Drone.objects.filter(user=request.user)
+            stats = []
+            
+            for drone in user_drones:
+                flights = DroneFlight.objects.filter(drone=drone)
+                total_flights = flights.count()
+                total_duration = flights.aggregate(
+                    total=models.Sum('duration')
+                )['total'] or 0
+                
+                stats.append({
+                    'drone_name': drone.name,
+                    'total_flights': total_flights,
+                    'total_duration': total_duration,
+                    'last_flight': flights.order_by('-flight_date').first().flight_date if flights.exists() else None
+                })
+            
+            return Response({
+                'stats': stats,
+                'status': 'success'
+            })
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération des statistiques: {e}")
+            return Response(
+                {'error': 'Erreur lors de la récupération des statistiques'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=False, methods=['get'])
+    def recent_flights(self, request):
+        """Get recent flights"""
+        try:
+            recent_flights = self.get_queryset().order_by('-flight_date')[:10]
+            serializer = DroneFlightSerializer(recent_flights, many=True)
+            
+            return Response({
+                'recent_flights': serializer.data,
+                'status': 'success'
+            })
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération des vols récents: {e}")
+            return Response(
+                {'error': 'Erreur lors de la récupération des vols récents'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
