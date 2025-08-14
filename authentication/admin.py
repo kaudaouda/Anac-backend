@@ -1,12 +1,12 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.html import format_html
-from .models import User, UserProfile, PasswordResetToken, Drone, DroneFlight
+from .models import User, UserProfile, PasswordResetToken, Drone, DroneFlight, CarouselImage
 
 
 class UserProfileInline(admin.StackedInline):
     """
-    Inline pour le profil utilisateur
+    Inline for the user profile
     """
     model = UserProfile
     can_delete = False
@@ -17,7 +17,7 @@ class UserProfileInline(admin.StackedInline):
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     """
-    Administration des utilisateurs
+    Administration of users
     """
     inlines = [UserProfileInline]
     list_display = ['email', 'full_name', 'phone', 'is_verified', 'is_active', 'is_staff', 'created_at']
@@ -52,7 +52,7 @@ class UserAdmin(BaseUserAdmin):
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
     """
-    Administration des profils utilisateurs
+    Administration of user profiles
     """
     list_display = ['user_email', 'user_full_name', 'city', 'country', 'has_avatar']
     list_filter = ['city', 'country', 'birth_date']
@@ -77,7 +77,7 @@ class UserProfileAdmin(admin.ModelAdmin):
 @admin.register(PasswordResetToken)
 class PasswordResetTokenAdmin(admin.ModelAdmin):
     """
-    Administration des tokens de réinitialisation
+    Administration of password reset tokens
     """
     list_display = ['user_email', 'token_preview', 'created_at', 'expires_at', 'is_used', 'is_expired']
     list_filter = ['is_used', 'created_at', 'expires_at']
@@ -101,7 +101,7 @@ class PasswordResetTokenAdmin(admin.ModelAdmin):
 @admin.register(Drone)
 class DroneAdmin(admin.ModelAdmin):
     """
-    Administration des drones
+    Administration of drones
     """
     list_display = ['name', 'user_full_name', 'user_email', 'drone_type', 'status', 'is_maintenance_due', 'created_at']
     list_filter = ['drone_type', 'status', 'created_at', 'purchase_date']
@@ -149,7 +149,7 @@ class DroneAdmin(admin.ModelAdmin):
 @admin.register(DroneFlight)
 class DroneFlightAdmin(admin.ModelAdmin):
     """
-    Administration des vols de drones
+    Administration of drone flights
     """
     list_display = ['drone_name', 'pilot_full_name', 'flight_date', 'duration', 'location', 'purpose']
     list_filter = ['flight_date', 'drone__drone_type', 'drone__user']
@@ -177,3 +177,39 @@ class DroneFlightAdmin(admin.ModelAdmin):
     def pilot_full_name(self, obj):
         return obj.pilot.full_name
     pilot_full_name.short_description = 'Pilote'
+
+
+@admin.register(CarouselImage)
+class CarouselImageAdmin(admin.ModelAdmin):
+    """
+    Administration of carousel images
+    """
+    list_display = ['title', 'order', 'is_active', 'image_preview', 'created_at']
+    list_filter = ['is_active', 'created_at']
+    search_fields = ['title', 'description']
+    list_editable = ['order', 'is_active']
+    ordering = ['order', 'created_at']
+    
+    fieldsets = (
+        ('Informations de base', {
+            'fields': ('title', 'description', 'image')
+        }),
+        ('Affichage', {
+            'fields': ('order', 'is_active')
+        }),
+        ('Informations système', {
+            'fields': ('id', 'created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    readonly_fields = ['id', 'created_at', 'updated_at']
+    
+    def image_preview(self, obj):
+        if obj.image:
+            return format_html(
+                '<img src="{}" style="max-height: 50px; max-width: 100px; object-fit: cover;" />',
+                obj.image.url
+            )
+        return format_html('<span style="color: red;">Aucune image</span>')
+    image_preview.short_description = 'Aperçu'

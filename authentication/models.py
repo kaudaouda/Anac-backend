@@ -212,3 +212,33 @@ class DroneFlight(models.Model):
     
     def __str__(self):
         return f"Vol de {self.drone.name} le {self.flight_date.strftime('%d/%m/%Y')}"
+
+
+class CarouselImage(models.Model):
+    """
+    Modèle pour les images du carrousel de la page d'accueil
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    title = models.CharField(max_length=200, verbose_name="Titre de l'image")
+    description = models.TextField(blank=True, verbose_name="Description")
+    image = models.ImageField(upload_to='carousel/', verbose_name="Image")
+    order = models.PositiveIntegerField(default=0, verbose_name="Ordre d'affichage")
+    is_active = models.BooleanField(default=True, verbose_name="Actif")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Date de création")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Dernière modification")
+    
+    class Meta:
+        verbose_name = "Image de carrousel"
+        verbose_name_plural = "Images de carrousel"
+        db_table = 'carousel_image'
+        ordering = ['order', 'created_at']
+    
+    def __str__(self):
+        return f"{self.title} (Ordre: {self.order})"
+    
+    @property
+    def image_url(self):
+        """Retourne l'URL de l'image"""
+        if self.image:
+            return self.image.url
+        return None

@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
 from datetime import datetime
-from .models import User, UserProfile, PasswordResetToken, Drone, DroneFlight
+from .models import User, UserProfile, PasswordResetToken, Drone, DroneFlight, CarouselImage
 
 
 def validate_date_format(value):
@@ -196,3 +196,20 @@ class DroneFlightCreateSerializer(serializers.ModelSerializer):
             if 'flight_date' in data and data['flight_date'] == '':
                 data['flight_date'] = None
         return super().to_internal_value(data)
+
+
+class CarouselImageSerializer(serializers.ModelSerializer):
+    image_url = serializers.ReadOnlyField()
+    
+    class Meta:
+        model = CarouselImage
+        fields = ['id', 'title', 'description', 'image', 'image_url', 'order', 'is_active', 'created_at']
+        read_only_fields = ['id', 'image_url', 'created_at']
+
+
+class CarouselImageListSerializer(serializers.ModelSerializer):
+    image_url = serializers.ReadOnlyField()
+    
+    class Meta:
+        model = CarouselImage
+        fields = ['id', 'title', 'description', 'image_url', 'order', 'is_active']
