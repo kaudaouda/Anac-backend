@@ -35,4 +35,7 @@ urlpatterns = [
     path('api/public/', views.public_endpoint, name='public_endpoint'),
     path('api/protected/', views.protected_endpoint, name='protected_endpoint'),
     path('api/profile/', views.user_profile, name='user_profile'),
+    
+    # Authentication API
+    path('api/auth/', include('authentication.urls')),
 ]
