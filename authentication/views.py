@@ -21,9 +21,10 @@ from .serializers import (
     ChangePasswordSerializer,
     PasswordResetRequestSerializer,
     DroneSerializer, DroneCreateSerializer,
-    DroneFlightSerializer, DroneFlightCreateSerializer
+    DroneFlightSerializer, DroneFlightCreateSerializer,
+    CarouselImageSerializer, CarouselImageListSerializer
 )
-from .models import User, PasswordResetToken, Drone, DroneFlight
+from .models import User, PasswordResetToken, Drone, DroneFlight, CarouselImage
 
 
 class UserRegistrationView(generics.CreateAPIView):
@@ -484,3 +485,75 @@ class DroneFlightViewSet(viewsets.ModelViewSet):
                 {'error': 'Erreur lors de la récupération des vols récents'}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+class CarouselImageViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet pour la gestion des images de carrousel
+    """
+    queryset = CarouselImage.objects.filter(is_active=True).order_by('order', 'created_at')
+    serializer_class = CarouselImageSerializer
+    permission_classes = [permissions.AllowAny]  # Public pour l'affichage
+    
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return CarouselImageListSerializer
+        return CarouselImageSerializer
+    
+    def list(self, request, *args, **kwargs):
+        """Liste publique des images de carrousel actives"""
+        try:
+            queryset = self.filter_queryset(self.get_queryset())
+            serializer = self.get_serializer(queryset, many=True)
+            return Response({
+                'images': serializer.data,
+                'count': queryset.count(),
+                'status': 'success'
+            })
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération des images de carrousel: {e}")
+            return Response(
+                {'error': 'Erreur lors de la récupération des images'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def create(self, request, *args, **kwargs):
+        """Créer une nouvelle image de carrousel (admin seulement)"""
+        if not request.user.is_staff:
+            return Response(
+                {'error': 'Accès non autorisé'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({
+                'message': 'Image de carrousel créée avec succès',
+                'image': serializer.data
+            }, status=status.HTTP_201_CREATED)
+        
+        return Response({
+            'error': 'Données invalides',
+            'details': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    def update(self, request, *args, **kwargs):
+        """Mettre à jour une image de carrousel (admin seulement)"""
+        if not request.user.is_staff:
+            return Response(
+                {'error': 'Accès non autorisé'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        return super().update(request, *args, **kwargs)
+    
+    def destroy(self, request, *args, **kwargs):
+        """Supprimer une image de carrousel (admin seulement)"""
+        if not request.user.is_staff:
+            return Response(
+                {'error': 'Accès non autorisé'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        return super().destroy(request, *args, **kwargs)
