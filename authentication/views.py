@@ -1,5 +1,6 @@
 from rest_framework import status, generics, permissions, viewsets
 from rest_framework.decorators import api_view, permission_classes, action
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
@@ -22,9 +23,12 @@ from .serializers import (
     PasswordResetRequestSerializer,
     DroneSerializer, DroneCreateSerializer,
     DroneFlightSerializer, DroneFlightCreateSerializer,
-    CarouselImageSerializer, CarouselImageListSerializer
+    CarouselImageSerializer, CarouselImageListSerializer,
+    AirportSerializer, AirportCreateSerializer,
+    NaturalReserveSerializer, NaturalReserveCreateSerializer,
+    NationalParkSerializer, NationalParkCreateSerializer
 )
-from .models import User, PasswordResetToken, Drone, DroneFlight, CarouselImage
+from .models import User, PasswordResetToken, Drone, DroneFlight, CarouselImage, Airport, NaturalReserve, NationalPark
 
 
 class UserRegistrationView(generics.CreateAPIView):
@@ -557,3 +561,162 @@ class CarouselImageViewSet(viewsets.ModelViewSet):
             )
         
         return super().destroy(request, *args, **kwargs)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_airports_for_map(request):
+    """
+    Récupère tous les aéroports et aérodromes approuvés pour l'affichage sur la carte
+    """
+    try:
+        # Récupérer seulement les aéroports approuvés
+        airports = Airport.objects.filter(is_active=True).order_by('airport_type', 'name')
+        
+        # Séparer par type
+        airports_data = []
+        aerodromes_data = []
+        
+        for airport in airports:
+            if airport.airport_type in ['international', 'domestic']:
+                airports_data.append(airport)
+            elif airport.airport_type == 'aerodrome':
+                aerodromes_data.append(airport)
+        
+        # Sérialiser les données
+        airports_serializer = AirportSerializer(airports_data, many=True)
+        aerodromes_serializer = AirportSerializer(aerodromes_data, many=True)
+        
+        response_data = {
+            'airports': airports_serializer.data,
+            'aerodromes': aerodromes_serializer.data,
+            'total_airports': len(airports_data),
+            'total_aerodromes': len(aerodromes_data),
+            'total_locations': len(airports)
+        }
+        
+        return Response(response_data, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': 'Erreur lors de la récupération des données',
+            'detail': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def create_airport(request):
+    """
+    Permet à un utilisateur de créer un nouvel aéroport/aérodrome
+    """
+    try:
+        serializer = AirportCreateSerializer(data=request.data, context={'request': request})
+        
+        if serializer.is_valid():
+            airport = serializer.save()
+            
+            return Response({
+                'message': 'Aéroport créé avec succès et en attente d\'approbation',
+                'airport': AirportSerializer(airport).data
+            }, status=status.HTTP_201_CREATED)
+        
+        return Response({
+            'error': 'Données invalides',
+            'details': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+        
+    except Exception as e:
+        return Response({
+            'error': 'Erreur lors de la création de l\'aéroport',
+            'detail': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_protected_areas_for_map(request):
+    """
+    Récupère toutes les zones protégées approuvées pour l'affichage sur la carte
+    """
+    try:
+        # Récupérer seulement les zones approuvées
+        natural_reserves = NaturalReserve.objects.filter(is_active=True).all().order_by('name')
+        national_parks = NationalPark.objects.filter(is_active=True).all().order_by('name')
+        
+        natural_reserves_serializer = NaturalReserveSerializer(natural_reserves, many=True)
+        national_parks_serializer = NationalParkSerializer(national_parks, many=True)
+        
+        response_data = {
+            'natural_reserves': natural_reserves_serializer.data,
+            'national_parks': national_parks_serializer.data,
+            'total_natural_reserves': len(natural_reserves),
+            'total_national_parks': len(national_parks),
+            'total_protected_areas': len(natural_reserves) + len(national_parks)
+        }
+        
+        return Response(response_data, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': 'Erreur lors de la récupération des zones protégées',
+            'detail': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def create_natural_reserve(request):
+    """
+    Permet à un utilisateur de créer une nouvelle réserve naturelle
+    """
+    try:
+        serializer = NaturalReserveCreateSerializer(data=request.data, context={'request': request})
+        
+        if serializer.is_valid():
+            reserve = serializer.save()
+            
+            return Response({
+                'message': 'Réserve naturelle créée avec succès et en attente d\'approbation',
+                'reserve': NaturalReserveSerializer(reserve).data
+            }, status=status.HTTP_201_CREATED)
+        
+        return Response({
+            'error': 'Données invalides',
+            'details': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+        
+    except Exception as e:
+        return Response({
+            'error': 'Erreur lors de la création de la réserve',
+            'detail': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def create_national_park(request):
+    """
+    Permet à un utilisateur de créer un nouveau parc national
+    """
+    try:
+        serializer = NationalParkCreateSerializer(data=request.data, context={'request': request})
+        
+        if serializer.is_valid():
+            park = serializer.save()
+            
+            return Response({
+                'message': 'Parc national créé avec succès et en attente d\'approbation',
+                'park': NationalParkSerializer(park).data
+            }, status=status.HTTP_201_CREATED)
+        
+        return Response({
+            'error': 'Données invalides',
+            'details': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+        
+    except Exception as e:
+        return Response({
+            'error': 'Erreur lors de la création du parc',
+            'detail': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

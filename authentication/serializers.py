@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
 from datetime import datetime
-from .models import User, UserProfile, PasswordResetToken, Drone, DroneFlight, CarouselImage
+from .models import User, UserProfile, PasswordResetToken, Drone, DroneFlight, CarouselImage, Airport, NaturalReserve, NationalPark, ProtectedAreaCoordinates
 
 
 def validate_date_format(value):
@@ -213,3 +213,173 @@ class CarouselImageListSerializer(serializers.ModelSerializer):
     class Meta:
         model = CarouselImage
         fields = ['id', 'title', 'description', 'image_url', 'order', 'is_active']
+
+
+class AirportSerializer(serializers.ModelSerializer):
+    """Serializer pour l'API des aéroports et aérodromes"""
+    coordinates = serializers.SerializerMethodField()
+    type = serializers.CharField(source='airport_type')
+
+    class Meta:
+        model = Airport
+        fields = [
+            'id', 'airport_id', 'name', 'code', 'airport_type',
+            'city', 'latitude', 'longitude', 'radius', 'description',
+            'coordinates', 'type', 'is_active', 'created_by', 'created_at'
+        ]
+
+    def get_coordinates(self, obj):
+        """Retourne les coordonnées au format [lat, lng] pour Leaflet"""
+        return [float(obj.latitude), float(obj.longitude)]
+
+    def to_representation(self, instance):
+        """Personnalise la représentation pour la carte"""
+        data = super().to_representation(instance)
+        data['id'] = instance.airport_id
+        return data
+
+
+class AirportCreateSerializer(serializers.ModelSerializer):
+    """Serializer pour la création d'aéroports et aérodromes"""
+    
+    class Meta:
+        model = Airport
+        fields = [
+            'airport_id', 'name', 'code', 'airport_type',
+            'city', 'latitude', 'longitude', 'radius', 'description'
+        ]
+    
+    def create(self, validated_data):
+        """Créer un aéroport avec l'utilisateur connecté"""
+        validated_data['created_by'] = self.context['request'].user
+        return super().create(validated_data)
+
+
+class ProtectedAreaCoordinatesSerializer(serializers.ModelSerializer):
+    """Serializer pour les coordonnées des zones protégées"""
+    
+    class Meta:
+        model = ProtectedAreaCoordinates
+        fields = ['latitude', 'longitude', 'order', 'is_active']
+
+
+class NaturalReserveSerializer(serializers.ModelSerializer):
+    """Serializer pour les réserves naturelles"""
+    
+    coordinates = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = NaturalReserve
+        fields = [
+            'id', 'reserve_id', 'name', 'type', 'area', 
+            'description', 'coordinates', 'is_active', 'created_by', 'created_at'
+        ]
+    
+    def get_coordinates(self, obj):
+        """Retourne les coordonnées au format [lat, lng] pour Leaflet"""
+        return obj.formatted_coordinates
+    
+    def to_representation(self, instance):
+        """Personnalise la représentation pour la carte"""
+        data = super().to_representation(instance)
+        data['id'] = instance.reserve_id
+        return data
+
+
+class NaturalReserveCreateSerializer(serializers.ModelSerializer):
+    """Serializer pour la création de réserves naturelles"""
+    
+    coordinates = serializers.ListField(
+        child=serializers.ListField(
+            child=serializers.DecimalField(max_digits=10, decimal_places=6),
+            min_length=2,
+            max_length=2
+        ),
+        write_only=True
+    )
+    
+    class Meta:
+        model = NaturalReserve
+        fields = [
+            'reserve_id', 'name', 'type', 'area', 'description', 'coordinates'
+        ]
+    
+    def create(self, validated_data):
+        """Créer une réserve avec ses coordonnées"""
+        coordinates_data = validated_data.pop('coordinates')
+        validated_data['created_by'] = self.context['request'].user
+        
+        reserve = super().create(validated_data)
+        
+        # Créer les coordonnées
+        for i, coord in enumerate(coordinates_data):
+            ProtectedAreaCoordinates.objects.create(
+                natural_reserve=reserve,
+                latitude=coord[0],
+                longitude=coord[1],
+                order=i,
+                created_by=self.context['request'].user
+            )
+        
+        return reserve
+
+
+class NationalParkSerializer(serializers.ModelSerializer):
+    """Serializer pour les parcs nationaux"""
+    
+    coordinates = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = NationalPark
+        fields = [
+            'id', 'park_id', 'name', 'type', 'area', 
+            'description', 'coordinates', 'is_active', 'created_by', 'created_at'
+        ]
+    
+    def get_coordinates(self, obj):
+        """Retourne les coordonnées au format [lat, lng] pour Leaflet"""
+        return obj.formatted_coordinates
+    
+    def to_representation(self, instance):
+        """Personnalise la représentation pour la carte"""
+        data = super().to_representation(instance)
+        data['id'] = instance.park_id
+        return data
+
+
+class NationalParkCreateSerializer(serializers.ModelSerializer):
+    """Serializer pour la création de parcs nationaux"""
+    
+    coordinates = serializers.ListField(
+        child=serializers.ListField(
+            child=serializers.DecimalField(max_digits=10, decimal_places=6),
+            min_length=2,
+            max_length=2
+        ),
+        write_only=True
+    )
+    
+    class Meta:
+        model = NationalPark
+        fields = [
+            'park_id', 'name', 'type', 'area', 'description', 'coordinates'
+        ]
+    
+    def create(self, validated_data):
+        """Créer un parc avec ses coordonnées"""
+        coordinates_data = validated_data.pop('coordinates')
+        validated_data['created_by'] = self.context['request'].user
+        
+        park = super().create(validated_data)
+        
+        # Créer les coordonnées
+        for i, coord in enumerate(coordinates_data):
+            ProtectedAreaCoordinates.objects.create(
+                national_park=park,
+                latitude=coord[0],
+                longitude=coord[1],
+                order=i,
+                created_by=self.context['request'].user
+            )
+        
+        return park

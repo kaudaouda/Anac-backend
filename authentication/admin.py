@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.html import format_html
-from .models import User, UserProfile, PasswordResetToken, Drone, DroneFlight, CarouselImage
+from .models import User, UserProfile, PasswordResetToken, Drone, DroneFlight, CarouselImage, Airport, NaturalReserve, NationalPark, ProtectedAreaCoordinates
 
 
 class UserProfileInline(admin.StackedInline):
@@ -213,3 +213,133 @@ class CarouselImageAdmin(admin.ModelAdmin):
             )
         return format_html('<span style="color: red;">Aucune image</span>')
     image_preview.short_description = 'Aperçu'
+
+
+@admin.register(Airport)
+class AirportAdmin(admin.ModelAdmin):
+    """Administration des aéroports et aérodromes"""
+    list_display = ['name', 'city', 'airport_type', 'code', 'latitude', 'longitude', 'radius', 'is_active', 'created_by', 'created_at']
+    list_filter = ['airport_type', 'city', 'is_active', 'created_at']
+    search_fields = ['name', 'city', 'code', 'airport_id']
+    readonly_fields = ['id', 'created_at', 'updated_at']
+    ordering = ['airport_type', 'name']
+    list_editable = ['is_active']
+    
+    fieldsets = (
+        ('Informations générales', {
+            'fields': ('airport_id', 'name', 'code', 'airport_type', 'city', 'description')
+        }),
+        ('Coordonnées géographiques', {
+            'fields': ('latitude', 'longitude', 'radius')
+        }),
+        ('Statut et approbation', {
+            'fields': ('is_active', 'created_by')
+        }),
+        ('Métadonnées', {
+            'fields': ('id', 'created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('created_by')
+
+
+@admin.register(NaturalReserve)
+class NaturalReserveAdmin(admin.ModelAdmin):
+    """Administration des réserves naturelles"""
+    list_display = ['name', 'area', 'type', 'is_active', 'created_by', 'created_at']
+    list_filter = ['type', 'is_active', 'created_at']
+    search_fields = ['name', 'reserve_id', 'description']
+    readonly_fields = ['id', 'created_at', 'updated_at']
+    ordering = ['name']
+    list_editable = ['is_active']
+    
+    fieldsets = (
+        ('Informations générales', {
+            'fields': ('reserve_id', 'name', 'type', 'area', 'description')
+        }),
+        ('Statut et approbation', {
+            'fields': ('is_active', 'created_by')
+        }),
+        ('Métadonnées', {
+            'fields': ('id', 'created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('created_by')
+
+
+@admin.register(NationalPark)
+class NationalParkAdmin(admin.ModelAdmin):
+    """Administration des parcs nationaux"""
+    list_display = ['name', 'area', 'type', 'is_active', 'created_by', 'created_at']
+    list_filter = ['type', 'is_active', 'created_at']
+    search_fields = ['name', 'park_id', 'description']
+    readonly_fields = ['id', 'created_at', 'updated_at']
+    ordering = ['name']
+    list_editable = ['is_active']
+    
+    fieldsets = (
+        ('Informations générales', {
+            'fields': ('park_id', 'name', 'type', 'area', 'description')
+        }),
+        ('Statut et approbation', {
+            'fields': ('is_active', 'created_by')
+        }),
+        ('Métadonnées', {
+            'fields': ('id', 'created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('created_by')
+
+
+@admin.register(ProtectedAreaCoordinates)
+class ProtectedAreaCoordinatesAdmin(admin.ModelAdmin):
+    """Administration des coordonnées des zones protégées"""
+    list_display = ['get_zone_name', 'latitude', 'longitude', 'order', 'get_zone_type', 'is_active', 'created_by']
+    list_filter = ['natural_reserve', 'national_park', 'is_active', 'created_at']
+    search_fields = ['natural_reserve__name', 'national_park__name']
+    readonly_fields = ['id', 'created_at']
+    ordering = ['order']
+    list_editable = ['is_active']
+    
+    fieldsets = (
+        ('Zone protégée', {
+            'fields': ('natural_reserve', 'national_park')
+        }),
+        ('Coordonnées', {
+            'fields': ('latitude', 'longitude', 'order')
+        }),
+        ('Statut et approbation', {
+            'fields': ('is_active', 'created_by')
+        }),
+        ('Métadonnées', {
+            'fields': ('id', 'created_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('natural_reserve', 'national_park', 'created_by')
+    
+    def get_zone_name(self, obj):
+        if obj.natural_reserve:
+            return obj.natural_reserve.name
+        elif obj.national_park:
+            return obj.national_park.name
+        return "Zone inconnue"
+    get_zone_name.short_description = "Nom de la zone"
+    
+    def get_zone_type(self, obj):
+        if obj.natural_reserve:
+            return "Réserve naturelle"
+        elif obj.national_park:
+            return "Parc national"
+        return "Type inconnu"
+    get_zone_type.short_description = "Type de zone"
