@@ -242,3 +242,179 @@ class CarouselImage(models.Model):
         if self.image:
             return self.image.url
         return None
+
+
+class Airport(models.Model):
+    """
+    Modèle pour les aéroports et aérodromes de la Côte d'Ivoire
+    """
+    AIRPORT_TYPES = [
+        ('international', 'Aéroport International'),
+        ('domestic', 'Aéroport Domestique'),
+        ('aerodrome', 'Aérodrome'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    airport_id = models.CharField(max_length=10, unique=True, verbose_name="Identifiant unique de l'aéroport")
+    name = models.CharField(max_length=200, verbose_name="Nom de l'aéroport")
+    code = models.CharField(max_length=10, blank=True, verbose_name="Code IATA")
+    airport_type = models.CharField(max_length=20, choices=AIRPORT_TYPES, verbose_name="Type d'aéroport")
+    city = models.CharField(max_length=100, verbose_name="Ville")
+    latitude = models.DecimalField(max_digits=10, decimal_places=6, verbose_name="Latitude")
+    longitude = models.DecimalField(max_digits=10, decimal_places=6, verbose_name="Longitude")
+    radius = models.DecimalField(max_digits=5, decimal_places=2, verbose_name="Rayon de la zone interdite (km)")
+    description = models.TextField(blank=True, verbose_name="Description")
+    is_active = models.BooleanField(default=False, verbose_name="Approuvé par l'admin")
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Créé par")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Date de création")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Dernière modification")
+
+    class Meta:
+        verbose_name = "Aéroport/Aérodrome"
+        verbose_name_plural = "Aéroports/Aérodromes"
+        db_table = 'airport'
+        ordering = ['airport_type', 'name']
+        indexes = [
+            models.Index(fields=['airport_type']),
+            models.Index(fields=['city']),
+            models.Index(fields=['latitude', 'longitude']),
+            models.Index(fields=['is_active']),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.city}) - {self.get_airport_type_display()}"
+
+    @property
+    def coordinates(self):
+        return [float(self.latitude), float(self.longitude)]
+
+    @property
+    def is_restricted_zone(self):
+        return self.airport_type in ['international', 'domestic', 'aerodrome']
+
+
+class NaturalReserve(models.Model):
+    """
+    Modèle pour les réserves naturelles de la Côte d'Ivoire
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    reserve_id = models.CharField(max_length=20, unique=True, verbose_name="Identifiant unique de la réserve")
+    name = models.CharField(max_length=200, verbose_name="Nom de la réserve")
+    type = models.CharField(max_length=50, default='natural_reserve', verbose_name="Type de zone")
+    area = models.CharField(max_length=50, verbose_name="Superficie")
+    description = models.TextField(blank=True, verbose_name="Description")
+    coordinates = models.JSONField(verbose_name="Coordonnées GPS", help_text="Liste de coordonnées [lat, lng]")
+    is_active = models.BooleanField(default=False, verbose_name="Approuvé par l'admin")
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Créé par")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Date de création")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Dernière modification")
+    
+    class Meta:
+        verbose_name = "Réserve naturelle"
+        verbose_name_plural = "Réserves naturelles"
+        db_table = 'natural_reserve'
+        ordering = ['name']
+        indexes = [
+            models.Index(fields=['is_active']),
+        ]
+    
+    def __str__(self):
+        return f"{self.name} ({self.area})"
+    
+    @property
+    def formatted_coordinates(self):
+        """Retourne les coordonnées au format Leaflet"""
+        if self.coordinates:
+            return [[float(coord[0]), float(coord[1])] for coord in self.coordinates]
+        return []
+
+
+class NationalPark(models.Model):
+    """
+    Modèle pour les parcs nationaux de la Côte d'Ivoire
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    park_id = models.CharField(max_length=20, unique=True, verbose_name="Identifiant unique du parc")
+    name = models.CharField(max_length=200, verbose_name="Nom du parc")
+    type = models.CharField(max_length=50, default='national_park', verbose_name="Type de zone")
+    area = models.CharField(max_length=50, verbose_name="Superficie")
+    description = models.TextField(blank=True, verbose_name="Description")
+    coordinates = models.JSONField(verbose_name="Coordonnées GPS", help_text="Liste de coordonnées [lat, lng]")
+    is_active = models.BooleanField(default=False, verbose_name="Approuvé par l'admin")
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Créé par")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Date de création")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Dernière modification")
+    
+    class Meta:
+        verbose_name = "Parc national"
+        verbose_name_plural = "Parcs nationaux"
+        db_table = 'national_park'
+        ordering = ['name']
+        indexes = [
+            models.Index(fields=['is_active']),
+        ]
+    
+    def __str__(self):
+        return f"{self.name} ({self.area})"
+    
+    @property
+    def formatted_coordinates(self):
+        """Retourne les coordonnées au format Leaflet"""
+        if self.coordinates:
+            return [[float(coord[0]), float(coord[1])] for coord in self.coordinates]
+        return []
+
+
+class ProtectedAreaCoordinates(models.Model):
+    """
+    Modèle pour stocker les coordonnées des zones protégées
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    natural_reserve = models.ForeignKey(NaturalReserve, on_delete=models.CASCADE, related_name='old_coordinates', null=True, blank=True)
+    national_park = models.ForeignKey(NationalPark, on_delete=models.CASCADE, related_name='old_coordinates', null=True, blank=True)
+    latitude = models.DecimalField(max_digits=10, decimal_places=6, verbose_name="Latitude")
+    longitude = models.DecimalField(max_digits=10, decimal_places=6, verbose_name="Longitude")
+    order = models.PositiveIntegerField(default=0, verbose_name="Ordre des coordonnées")
+    is_active = models.BooleanField(default=False, verbose_name="Approuvé par l'admin")
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Créé par")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Date de création")
+    
+    def clean(self):
+        """Validation personnalisée"""
+        from django.core.exceptions import ValidationError
+        
+        # Vérifier qu'exactement une zone est associée
+        if bool(self.natural_reserve) == bool(self.national_park):
+            raise ValidationError(
+                'Une coordonnée doit être associée à exactement une zone protégée (réserve naturelle OU parc national)'
+            )
+        
+        # Vérifier que les coordonnées sont valides
+        if self.latitude < -90 or self.latitude > 90:
+            raise ValidationError('La latitude doit être comprise entre -90 et 90')
+        
+        if self.longitude < -180 or self.longitude > 180:
+            raise ValidationError('La longitude doit être comprise entre -180 et 180')
+    
+    def save(self, *args, **kwargs):
+        """Validation avant sauvegarde"""
+        self.clean()
+        super().save(*args, **kwargs)
+    
+    class Meta:
+        verbose_name = "Coordonnées de zone protégée"
+        verbose_name_plural = "Coordonnées des zones protégées"
+        db_table = 'protected_area_coordinates'
+        ordering = ['order']
+        indexes = [
+            models.Index(fields=['natural_reserve', 'order']),
+            models.Index(fields=['national_park', 'order']),
+            models.Index(fields=['is_active']),
+        ]
+    
+    def __str__(self):
+        if self.natural_reserve:
+            return f"Coordonnée {self.order} - {self.natural_reserve.name}"
+        elif self.national_park:
+            return f"Coordonnée {self.order} - {self.national_park.name}"
+        return f"Coordonnée {self.order}"

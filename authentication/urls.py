@@ -21,4 +21,13 @@ urlpatterns = [
     
     # Carousel routes
     path('', include(router.urls)),
+    
+    # API pour la carte des aéroports
+    path('airports/map/', views.get_airports_for_map, name='get_airports_for_map'),
+    path('airports/create/', views.create_airport, name='create_airport'),
+    
+    # API pour la carte des zones protégées
+    path('protected-areas/map/', views.get_protected_areas_for_map, name='get_protected_areas_for_map'),
+    path('protected-areas/reserves/create/', views.create_natural_reserve, name='create_natural_reserve'),
+    path('protected-areas/parks/create/', views.create_national_park, name='create_national_park'),
 ]
