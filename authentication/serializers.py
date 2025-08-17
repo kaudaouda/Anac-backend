@@ -278,6 +278,55 @@ class NaturalReserveSerializer(serializers.ModelSerializer):
     def get_coordinates(self, obj):
         """Retourne les coordonnées au format [lat, lng] pour Leaflet"""
         return obj.formatted_coordinates
+
+
+class NaturalReserveCreateSerializer(serializers.ModelSerializer):
+    """Serializer pour la création de réserves naturelles"""
+    
+    coordinates = serializers.ListField(
+        child=serializers.ListField(
+            child=serializers.FloatField(),
+            min_length=2,
+            max_length=2
+        ),
+        min_length=3,
+        help_text="Liste des coordonnées [lat, lng] (minimum 3 points)"
+    )
+    
+    class Meta:
+        model = NaturalReserve
+        fields = [
+            'reserve_id', 'name', 'area', 'description', 'coordinates'
+        ]
+    
+    def validate_coordinates(self, value):
+        """Valider les coordonnées"""
+        for coord in value:
+            if len(coord) != 2:
+                raise serializers.ValidationError("Chaque coordonnée doit avoir exactement 2 valeurs (lat, lng)")
+            
+            lat, lng = coord
+            if not (-90 <= lat <= 90):
+                raise serializers.ValidationError("La latitude doit être comprise entre -90 et 90")
+            if not (-180 <= lng <= 180):
+                raise serializers.ValidationError("La longitude doit être comprise entre -180 et 180")
+        
+        return value
+    
+    def create(self, validated_data):
+        """Créer la réserve naturelle"""
+        validated_data['type'] = 'natural_reserve'
+        validated_data['is_active'] = False  # En attente d'approbation admin
+        
+        # Récupérer l'utilisateur depuis le contexte
+        user = self.context.get('request').user if self.context.get('request') else None
+        if user:
+            validated_data['created_by'] = user
+        
+        # Les coordonnées sont déjà dans validated_data, pas besoin de les retirer
+        reserve = NaturalReserve.objects.create(**validated_data)
+        
+        return reserve
     
     def to_representation(self, instance):
         """Personnalise la représentation pour la carte"""
@@ -286,42 +335,7 @@ class NaturalReserveSerializer(serializers.ModelSerializer):
         return data
 
 
-class NaturalReserveCreateSerializer(serializers.ModelSerializer):
-    """Serializer pour la création de réserves naturelles"""
-    
-    coordinates = serializers.ListField(
-        child=serializers.ListField(
-            child=serializers.DecimalField(max_digits=10, decimal_places=6),
-            min_length=2,
-            max_length=2
-        ),
-        write_only=True
-    )
-    
-    class Meta:
-        model = NaturalReserve
-        fields = [
-            'reserve_id', 'name', 'type', 'area', 'description', 'coordinates'
-        ]
-    
-    def create(self, validated_data):
-        """Créer une réserve avec ses coordonnées"""
-        coordinates_data = validated_data.pop('coordinates')
-        validated_data['created_by'] = self.context['request'].user
-        
-        reserve = super().create(validated_data)
-        
-        # Créer les coordonnées
-        for i, coord in enumerate(coordinates_data):
-            ProtectedAreaCoordinates.objects.create(
-                natural_reserve=reserve,
-                latitude=coord[0],
-                longitude=coord[1],
-                order=i,
-                created_by=self.context['request'].user
-            )
-        
-        return reserve
+
 
 
 class NationalParkSerializer(serializers.ModelSerializer):
@@ -339,6 +353,55 @@ class NationalParkSerializer(serializers.ModelSerializer):
     def get_coordinates(self, obj):
         """Retourne les coordonnées au format [lat, lng] pour Leaflet"""
         return obj.formatted_coordinates
+
+
+class NationalParkCreateSerializer(serializers.ModelSerializer):
+    """Serializer pour la création de parcs nationaux"""
+    
+    coordinates = serializers.ListField(
+        child=serializers.ListField(
+            child=serializers.FloatField(),
+            min_length=2,
+            max_length=2
+        ),
+        min_length=3,
+        help_text="Liste des coordonnées [lat, lng] (minimum 3 points)"
+    )
+    
+    class Meta:
+        model = NationalPark
+        fields = [
+            'park_id', 'name', 'area', 'description', 'coordinates'
+        ]
+    
+    def validate_coordinates(self, value):
+        """Valider les coordonnées"""
+        for coord in value:
+            if len(coord) != 2:
+                raise serializers.ValidationError("Chaque coordonnée doit avoir exactement 2 valeurs (lat, lng)")
+            
+            lat, lng = coord
+            if not (-90 <= lat <= 90):
+                raise serializers.ValidationError("La latitude doit être comprise entre -90 et 90")
+            if not (-180 <= lng <= 180):
+                raise serializers.ValidationError("La longitude doit être comprise entre -180 et 180")
+        
+        return value
+    
+    def create(self, validated_data):
+        """Créer le parc national"""
+        validated_data['type'] = 'national_park'
+        validated_data['is_active'] = False  # En attente d'approbation admin
+        
+        # Récupérer l'utilisateur depuis le contexte
+        user = self.context.get('request').user if self.context.get('request') else None
+        if user:
+            validated_data['created_by'] = user
+        
+        # Les coordonnées sont déjà dans validated_data, pas besoin de les retirer
+        park = NationalPark.objects.create(**validated_data)
+        
+        return park
     
     def to_representation(self, instance):
         """Personnalise la représentation pour la carte"""
@@ -347,39 +410,4 @@ class NationalParkSerializer(serializers.ModelSerializer):
         return data
 
 
-class NationalParkCreateSerializer(serializers.ModelSerializer):
-    """Serializer pour la création de parcs nationaux"""
-    
-    coordinates = serializers.ListField(
-        child=serializers.ListField(
-            child=serializers.DecimalField(max_digits=10, decimal_places=6),
-            min_length=2,
-            max_length=2
-        ),
-        write_only=True
-    )
-    
-    class Meta:
-        model = NationalPark
-        fields = [
-            'park_id', 'name', 'type', 'area', 'description', 'coordinates'
-        ]
-    
-    def create(self, validated_data):
-        """Créer un parc avec ses coordonnées"""
-        coordinates_data = validated_data.pop('coordinates')
-        validated_data['created_by'] = self.context['request'].user
-        
-        park = super().create(validated_data)
-        
-        # Créer les coordonnées
-        for i, coord in enumerate(coordinates_data):
-            ProtectedAreaCoordinates.objects.create(
-                national_park=park,
-                latitude=coord[0],
-                longitude=coord[1],
-                order=i,
-                created_by=self.context['request'].user
-            )
-        
-        return park
+
