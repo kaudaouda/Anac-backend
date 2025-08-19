@@ -11,6 +11,7 @@ from django.shortcuts import get_object_or_404
 import uuid
 from django.db import models
 import logging
+import json
 
 # Configuration du logging
 logger = logging.getLogger(__name__)
@@ -29,11 +30,11 @@ from .serializers import (
     NationalParkSerializer, NationalParkCreateSerializer
 )
 from .models import User, PasswordResetToken, Drone, DroneFlight, CarouselImage, Airport, NaturalReserve, NationalPark
-
+from .jwt_utils import JWTTokenManager, JWTCookieResponse
 
 class UserRegistrationView(generics.CreateAPIView):
     """
-    View for user registration
+    Vue pour l'inscription d'un nouvel utilisateur avec cookies JWT
     """
     serializer_class = UserRegistrationSerializer
     permission_classes = [permissions.AllowAny]
@@ -44,26 +45,33 @@ class UserRegistrationView(generics.CreateAPIView):
             user = serializer.save()
             
             # Générer les tokens JWT
-            refresh = RefreshToken.for_user(user)
+            tokens = JWTTokenManager.create_tokens_for_user(user)
             
-            return Response({
+            # Créer la réponse avec cookies
+            response_data = {
                 'message': 'Compte créé avec succès',
                 'user': UserDetailSerializer(user).data,
-                'tokens': {
-                    'access': str(refresh.access_token),
-                    'refresh': str(refresh)
-                }
-            }, status=status.HTTP_201_CREATED)
+                'success': True
+            }
+            
+            # Créer la réponse JSON
+            response = Response(response_data, status=status.HTTP_201_CREATED)
+            
+            # Définir les cookies d'authentification
+            response = JWTTokenManager.set_auth_cookies(response, tokens)
+            
+            return response
         
         return Response({
             'message': 'Erreur lors de la création du compte',
-            'errors': serializer.errors
+            'errors': serializer.errors,
+            'success': False
         }, status=status.HTTP_400_BAD_REQUEST)
 
 
 class UserLoginView(generics.GenericAPIView):
     """
-    View for user login
+    Vue pour la connexion utilisateur avec cookies JWT
     """
     serializer_class = UserLoginSerializer
     permission_classes = [permissions.AllowAny]
@@ -74,57 +82,77 @@ class UserLoginView(generics.GenericAPIView):
             user = serializer.validated_data['user']
             
             # Générer les tokens JWT
-            refresh = RefreshToken.for_user(user)
+            tokens = JWTTokenManager.create_tokens_for_user(user)
             
             # Mettre à jour la dernière connexion
             user.last_login = timezone.now()
             user.save()
             
-            return Response({
+            # Créer la réponse
+            response_data = {
                 'message': 'Connexion réussie',
                 'user': UserDetailSerializer(user).data,
-                'tokens': {
-                    'access': str(refresh.access_token),
-                    'refresh': str(refresh)
-                }
-            }, status=status.HTTP_200_OK)
+                'success': True
+            }
+            
+            response = Response(response_data, status=status.HTTP_200_OK)
+            
+            # Définir les cookies d'authentification
+            response = JWTTokenManager.set_auth_cookies(response, tokens)
+            
+            return response
         
         return Response({
             'message': 'Identifiants invalides',
-            'errors': serializer.errors
+            'errors': serializer.errors,
+            'success': False
         }, status=status.HTTP_400_BAD_REQUEST)
 
 
 class UserLogoutView(generics.GenericAPIView):
     """
-    View for user logout
+    Vue pour la déconnexion utilisateur avec suppression des cookies
     """
     permission_classes = [permissions.IsAuthenticated]
     
     def post(self, request):
         try:
-            # Récupérer le token de rafraîchissement depuis le body
-            refresh_token = request.data.get('refresh_token')
+            # Récupérer le token de rafraîchissement depuis le cookie
+            refresh_token = request.COOKIES.get('refresh_token')
             
             if refresh_token:
-                # Invalider le token de rafraîchissement
-                token = RefreshToken(refresh_token)
-                token.blacklist()
+                try:
+                    # Invalider le token de rafraîchissement
+                    token = RefreshToken(refresh_token)
+                    token.blacklist()
+                except Exception as e:
+                    logger.warning(f"Impossible d'invalider le refresh token: {e}")
             
-            return Response({
-                'message': 'Déconnexion réussie'
-            }, status=status.HTTP_200_OK)
+            # Créer la réponse
+            response_data = {
+                'message': 'Déconnexion réussie',
+                'success': True
+            }
+            
+            response = Response(response_data, status=status.HTTP_200_OK)
+            
+            # Supprimer les cookies d'authentification
+            response = JWTTokenManager.clear_auth_cookies(response)
+            
+            return response
             
         except Exception as e:
+            logger.error(f"Erreur lors de la déconnexion: {e}")
             return Response({
                 'message': 'Erreur lors de la déconnexion',
-                'error': str(e)
+                'error': str(e),
+                'success': False
             }, status=status.HTTP_400_BAD_REQUEST)
 
 
 class UserProfileView(generics.RetrieveUpdateAPIView):
     """
-    View for retrieving and updating user profile
+    Vue pour récupérer et mettre à jour le profil utilisateur
     """
     serializer_class = UserDetailSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -135,7 +163,7 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
 
 class ChangePasswordView(generics.GenericAPIView):
     """
-    View for changing password
+    Vue pour changer le mot de passe
     """
     serializer_class = ChangePasswordSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -145,24 +173,27 @@ class ChangePasswordView(generics.GenericAPIView):
         if serializer.is_valid():
             user = request.user
             
-            # check old password
+            # Vérifier l'ancien mot de passe
             if not user.check_password(serializer.validated_data['old_password']):
                 return Response({
                     'message': 'Ancien mot de passe incorrect',
-                    'errors': {'old_password': ['L\'ancien mot de passe est incorrect']}
+                    'errors': {'old_password': ['L\'ancien mot de passe est incorrect']},
+                    'success': False
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # change password
+            # Changer le mot de passe
             user.set_password(serializer.validated_data['new_password'])
             user.save()
             
             return Response({
-                'message': 'Mot de passe modifié avec succès'
+                'message': 'Mot de passe modifié avec succès',
+                'success': True
             }, status=status.HTTP_200_OK)
         
         return Response({
             'message': 'Erreur lors de la modification du mot de passe',
-            'errors': serializer.errors
+            'errors': serializer.errors,
+            'success': False
         }, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -181,11 +212,11 @@ class PasswordResetRequestView(generics.GenericAPIView):
             try:
                 user = User.objects.get(email=email, is_active=True)
                 
-
+                # Générer un token unique
                 token = str(uuid.uuid4())
                 expires_at = timezone.now() + timedelta(hours=24)
                 
-
+                # Créer ou mettre à jour le token de réinitialisation
                 reset_token, created = PasswordResetToken.objects.update_or_create(
                     user=user,
                     defaults={
@@ -195,20 +226,24 @@ class PasswordResetRequestView(generics.GenericAPIView):
                     }
                 )
                 
-
+                # TODO: Envoyer l'email de réinitialisation
+                # send_password_reset_email(user, token)
+                
                 return Response({
                     'message': 'Email de réinitialisation envoyé',
-                    'token': token  
+                    'success': True
                 }, status=status.HTTP_200_OK)
                 
             except User.DoesNotExist:
                 return Response({
-                    'message': 'Aucun utilisateur trouvé avec cet email'
+                    'message': 'Aucun utilisateur trouvé avec cet email',
+                    'success': False
                 }, status=status.HTTP_404_NOT_FOUND)
         
         return Response({
             'message': 'Erreur lors de la demande de réinitialisation',
-            'errors': serializer.errors
+            'errors': serializer.errors,
+            'success': False
         }, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -220,7 +255,8 @@ def check_auth_status(request):
     """
     return Response({
         'is_authenticated': True,
-        'user': UserDetailSerializer(request.user).data
+        'user': UserDetailSerializer(request.user).data,
+        'success': True
     }, status=status.HTTP_200_OK)
 
 
@@ -228,28 +264,48 @@ def check_auth_status(request):
 @permission_classes([permissions.AllowAny])
 def refresh_token_view(request):
     """
-    Rafraîchir le token d'accès
+    Rafraîchir le token d'accès via le cookie de rafraîchissement
     """
     try:
-        refresh_token = request.data.get('refresh_token')
+        # Récupérer le refresh token depuis le cookie
+        refresh_token = request.COOKIES.get('refresh_token')
+        
         if not refresh_token:
             return Response({
-                'message': 'Token de rafraîchissement requis'
+                'message': 'Token de rafraîchissement requis',
+                'success': False
             }, status=status.HTTP_400_BAD_REQUEST)
         
-
-        token = RefreshToken(refresh_token)
-        new_access_token = str(token.access_token)
+        # Rafraîchir le token d'accès
+        new_tokens = JWTTokenManager.refresh_access_token(refresh_token)
         
-        return Response({
-            'access': new_access_token,
-            'refresh': refresh_token
-        }, status=status.HTTP_200_OK)
+        # Créer la réponse
+        response_data = {
+            'message': 'Token rafraîchi avec succès',
+            'success': True
+        }
+        
+        response = Response(response_data, status=status.HTTP_200_OK)
+        
+        # Mettre à jour le cookie d'accès
+        response.set_cookie(
+            'access_token',
+            new_tokens['access'],
+            max_age=3600,  # 1 heure
+            httponly=True,
+            secure=not request.get_host().startswith('localhost'),
+            samesite='Lax',
+            path='/'
+        )
+        
+        return response
         
     except Exception as e:
+        logger.error(f"Erreur lors du rafraîchissement du token: {e}")
         return Response({
             'message': 'Token de rafraîchissement invalide',
-            'error': str(e)
+            'error': str(e),
+            'success': False
         }, status=status.HTTP_400_BAD_REQUEST)
 
 

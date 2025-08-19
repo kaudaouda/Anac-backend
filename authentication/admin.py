@@ -1,7 +1,10 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.html import format_html
-from .models import User, UserProfile, PasswordResetToken, Drone, DroneFlight, CarouselImage, Airport, NaturalReserve, NationalPark, ProtectedAreaCoordinates
+from .models import (
+    User, UserProfile, PasswordResetToken, Drone, DroneFlight, 
+    CarouselImage, Airport, NaturalReserve, NationalPark, JWTBlacklistedToken
+)
 
 
 class UserProfileInline(admin.StackedInline):
@@ -20,26 +23,26 @@ class UserAdmin(BaseUserAdmin):
     Administration of users
     """
     inlines = [UserProfileInline]
-    list_display = ['email', 'full_name', 'phone', 'is_verified', 'is_active', 'is_staff', 'created_at']
-    list_filter = ['is_verified', 'is_active', 'is_staff', 'created_at', 'groups']
-    search_fields = ['email', 'first_name', 'last_name', 'phone']
-    ordering = ['-created_at']
+    list_display = ('email', 'first_name', 'last_name', 'is_staff', 'is_active', 'is_verified', 'created_at')
+    list_filter = ('is_staff', 'is_active', 'is_verified', 'created_at')
+    search_fields = ('email', 'first_name', 'last_name', 'username')
+    ordering = ('-created_at',)
     
     fieldsets = (
         (None, {'fields': ('email', 'password')}),
-        ('Informations personnelles', {'fields': ('first_name', 'last_name', 'phone')}),
-        ('Permissions', {
-            'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions'),
-        }),
-        ('Statut', {'fields': ('is_verified', 'last_login', 'date_joined')}),
+        ('Informations personnelles', {'fields': ('first_name', 'last_name', 'phone', 'username')}),
+        ('Permissions', {'fields': ('is_active', 'is_staff', 'is_superuser', 'is_verified', 'groups', 'user_permissions')}),
+        ('Dates importantes', {'fields': ('last_login', 'date_joined', 'created_at', 'updated_at')}),
     )
     
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
-            'fields': ('email', 'first_name', 'last_name', 'phone', 'password1', 'password2'),
+            'fields': ('email', 'password1', 'password2', 'first_name', 'last_name'),
         }),
     )
+    
+    readonly_fields = ('created_at', 'updated_at', 'last_login', 'date_joined')
     
     def full_name(self, obj):
         return obj.full_name
@@ -51,13 +54,10 @@ class UserAdmin(BaseUserAdmin):
 
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
-    """
-    Administration of user profiles
-    """
-    list_display = ['user_email', 'user_full_name', 'city', 'country', 'has_avatar']
-    list_filter = ['city', 'country', 'birth_date']
-    search_fields = ['user__email', 'user__first_name', 'user__last_name', 'city', 'country']
-    readonly_fields = ['user']
+    list_display = ('user', 'city', 'country', 'has_avatar')
+    list_filter = ('country', 'city', 'birth_date')
+    search_fields = ('user__email', 'user__first_name', 'user__last_name', 'city', 'country')
+    readonly_fields = ('user',)
     
     def user_email(self, obj):
         return obj.user.email
@@ -68,10 +68,9 @@ class UserProfileAdmin(admin.ModelAdmin):
     user_full_name.short_description = 'Nom complet'
     
     def has_avatar(self, obj):
-        if obj.avatar:
-            return format_html('<span style="color: green;">✓</span>')
-        return format_html('<span style="color: red;">✗</span>')
-    has_avatar.short_description = 'Avatar'
+        return bool(obj.avatar)
+    has_avatar.boolean = True
+    has_avatar.short_description = 'A un avatar'
 
 
 @admin.register(PasswordResetToken)
@@ -79,10 +78,11 @@ class PasswordResetTokenAdmin(admin.ModelAdmin):
     """
     Administration of password reset tokens
     """
-    list_display = ['user_email', 'token_preview', 'created_at', 'expires_at', 'is_used', 'is_expired']
-    list_filter = ['is_used', 'created_at', 'expires_at']
-    search_fields = ['user__email', 'token']
-    readonly_fields = ['user', 'token', 'created_at', 'expires_at']
+    list_display = ('user', 'token', 'created_at', 'expires_at', 'is_used', 'is_expired')
+    list_filter = ('is_used', 'created_at', 'expires_at')
+    search_fields = ('user__email', 'token')
+    ordering = ('-created_at',)
+    readonly_fields = ('created_at',)
     
     def user_email(self, obj):
         return obj.user.email
@@ -103,11 +103,11 @@ class DroneAdmin(admin.ModelAdmin):
     """
     Administration of drones
     """
-    list_display = ['name', 'user_full_name', 'user_email', 'drone_type', 'status', 'is_maintenance_due', 'created_at']
-    list_filter = ['drone_type', 'status', 'created_at', 'purchase_date']
-    search_fields = ['name', 'model', 'brand', 'serial_number', 'user__email', 'user__first_name', 'user__last_name']
-    readonly_fields = ['id', 'user', 'created_at', 'updated_at', 'is_maintenance_due', 'age_in_days']
-    ordering = ['-created_at']
+    list_display = ('name', 'user', 'drone_type', 'status', 'created_at')
+    list_filter = ('drone_type', 'status', 'created_at', 'purchase_date')
+    search_fields = ('name', 'user__email', 'serial_number', 'registration_number')
+    ordering = ('-created_at',)
+    readonly_fields = ('created_at', 'updated_at')
     
     fieldsets = (
         ('Informations de base', {
@@ -151,11 +151,11 @@ class DroneFlightAdmin(admin.ModelAdmin):
     """
     Administration of drone flights
     """
-    list_display = ['drone_name', 'pilot_full_name', 'flight_date', 'duration', 'location', 'purpose']
-    list_filter = ['flight_date', 'drone__drone_type', 'drone__user']
-    search_fields = ['drone__name', 'pilot__email', 'pilot__first_name', 'pilot__last_name', 'location', 'purpose']
-    readonly_fields = ['id', 'drone', 'pilot', 'created_at']
-    ordering = ['-flight_date']
+    list_display = ('drone', 'pilot', 'flight_date', 'duration', 'location')
+    list_filter = ('flight_date', 'drone__drone_type', 'created_at')
+    search_fields = ('drone__name', 'pilot__email', 'location', 'purpose')
+    ordering = ('-flight_date',)
+    readonly_fields = ('created_at',)
     
     fieldsets = (
         ('Informations de vol', {
@@ -184,11 +184,12 @@ class CarouselImageAdmin(admin.ModelAdmin):
     """
     Administration of carousel images
     """
-    list_display = ['title', 'order', 'is_active', 'image_preview', 'created_at']
-    list_filter = ['is_active', 'created_at']
-    search_fields = ['title', 'description']
-    list_editable = ['order', 'is_active']
-    ordering = ['order', 'created_at']
+    list_display = ('title', 'order', 'is_active', 'created_at')
+    list_filter = ('is_active', 'order', 'created_at')
+    search_fields = ('title', 'description')
+    ordering = ('order', 'created_at')
+    list_editable = ('order', 'is_active')
+    readonly_fields = ('created_at', 'updated_at')
     
     fieldsets = (
         ('Informations de base', {
@@ -218,25 +219,25 @@ class CarouselImageAdmin(admin.ModelAdmin):
 @admin.register(Airport)
 class AirportAdmin(admin.ModelAdmin):
     """Administration des aéroports et aérodromes"""
-    list_display = ['name', 'city', 'airport_type', 'code', 'latitude', 'longitude', 'radius', 'is_active', 'created_by', 'created_at']
-    list_filter = ['airport_type', 'city', 'is_active', 'created_at']
-    search_fields = ['name', 'city', 'code', 'airport_id']
-    readonly_fields = ['id', 'created_at', 'updated_at']
-    ordering = ['airport_type', 'name']
-    list_editable = ['is_active']
+    list_display = ('name', 'city', 'airport_type', 'is_active', 'created_at')
+    list_filter = ('airport_type', 'is_active', 'city', 'created_at')
+    search_fields = ('name', 'city', 'code', 'airport_id')
+    ordering = ('airport_type', 'name')
+    list_editable = ('is_active',)
+    readonly_fields = ('created_at', 'updated_at')
     
     fieldsets = (
-        ('Informations générales', {
-            'fields': ('airport_id', 'name', 'code', 'airport_type', 'city', 'description')
+        ('Informations de base', {
+            'fields': ('airport_id', 'name', 'code', 'airport_type', 'city')
         }),
-        ('Coordonnées géographiques', {
+        ('Coordonnées', {
             'fields': ('latitude', 'longitude', 'radius')
         }),
-        ('Statut et approbation', {
-            'fields': ('is_active', 'created_by')
+        ('Détails', {
+            'fields': ('description', 'is_active')
         }),
         ('Métadonnées', {
-            'fields': ('id', 'created_at', 'updated_at'),
+            'fields': ('created_by', 'created_at', 'updated_at'),
             'classes': ('collapse',)
         }),
     )
@@ -248,22 +249,25 @@ class AirportAdmin(admin.ModelAdmin):
 @admin.register(NaturalReserve)
 class NaturalReserveAdmin(admin.ModelAdmin):
     """Administration des réserves naturelles"""
-    list_display = ['name', 'area', 'type', 'is_active', 'created_by', 'created_at']
-    list_filter = ['type', 'is_active', 'created_at']
-    search_fields = ['name', 'reserve_id', 'description']
-    readonly_fields = ['id', 'created_at', 'updated_at']
-    ordering = ['name']
-    list_editable = ['is_active']
+    list_display = ('name', 'area', 'is_active', 'created_at')
+    list_filter = ('is_active', 'created_at')
+    search_fields = ('name', 'area', 'description')
+    ordering = ('name',)
+    list_editable = ('is_active',)
+    readonly_fields = ('created_at', 'updated_at')
     
     fieldsets = (
-        ('Informations générales', {
+        ('Informations de base', {
             'fields': ('reserve_id', 'name', 'type', 'area', 'description')
         }),
-        ('Statut et approbation', {
-            'fields': ('is_active', 'created_by')
+        ('Coordonnées', {
+            'fields': ('coordinates',)
+        }),
+        ('Statut', {
+            'fields': ('is_active',)
         }),
         ('Métadonnées', {
-            'fields': ('id', 'created_at', 'updated_at'),
+            'fields': ('created_by', 'created_at', 'updated_at'),
             'classes': ('collapse',)
         }),
     )
@@ -275,22 +279,25 @@ class NaturalReserveAdmin(admin.ModelAdmin):
 @admin.register(NationalPark)
 class NationalParkAdmin(admin.ModelAdmin):
     """Administration des parcs nationaux"""
-    list_display = ['name', 'area', 'type', 'is_active', 'created_by', 'created_at']
-    list_filter = ['type', 'is_active', 'created_at']
-    search_fields = ['name', 'park_id', 'description']
-    readonly_fields = ['id', 'created_at', 'updated_at']
-    ordering = ['name']
-    list_editable = ['is_active']
+    list_display = ('name', 'area', 'is_active', 'created_at')
+    list_filter = ('is_active', 'created_at')
+    search_fields = ('name', 'area', 'description')
+    ordering = ('name',)
+    list_editable = ('is_active',)
+    readonly_fields = ('created_at', 'updated_at')
     
     fieldsets = (
-        ('Informations générales', {
+        ('Informations de base', {
             'fields': ('park_id', 'name', 'type', 'area', 'description')
         }),
-        ('Statut et approbation', {
-            'fields': ('is_active', 'created_by')
+        ('Coordonnées', {
+            'fields': ('coordinates',)
+        }),
+        ('Statut', {
+            'fields': ('is_active',)
         }),
         ('Métadonnées', {
-            'fields': ('id', 'created_at', 'updated_at'),
+            'fields': ('created_by', 'created_at', 'updated_at'),
             'classes': ('collapse',)
         }),
     )
@@ -299,47 +306,27 @@ class NationalParkAdmin(admin.ModelAdmin):
         return super().get_queryset(request).select_related('created_by')
 
 
-@admin.register(ProtectedAreaCoordinates)
-class ProtectedAreaCoordinatesAdmin(admin.ModelAdmin):
-    """Administration des coordonnées des zones protégées"""
-    list_display = ['get_zone_name', 'latitude', 'longitude', 'order', 'get_zone_type', 'is_active', 'created_by']
-    list_filter = ['natural_reserve', 'national_park', 'is_active', 'created_at']
-    search_fields = ['natural_reserve__name', 'national_park__name']
-    readonly_fields = ['id', 'created_at']
-    ordering = ['order']
-    list_editable = ['is_active']
+@admin.register(JWTBlacklistedToken)
+class JWTBlacklistedTokenAdmin(admin.ModelAdmin):
+    list_display = ('user_id', 'token_type', 'blacklisted_at', 'expires_at', 'reason')
+    list_filter = ('token_type', 'blacklisted_at', 'expires_at')
+    search_fields = ('user_id', 'reason')
+    ordering = ('-blacklisted_at',)
+    readonly_fields = ('blacklisted_at',)
     
     fieldsets = (
-        ('Zone protégée', {
-            'fields': ('natural_reserve', 'national_park')
+        ('Informations du token', {
+            'fields': ('token', 'token_type', 'user_id')
         }),
-        ('Coordonnées', {
-            'fields': ('latitude', 'longitude', 'order')
-        }),
-        ('Statut et approbation', {
-            'fields': ('is_active', 'created_by')
-        }),
-        ('Métadonnées', {
-            'fields': ('id', 'created_at'),
-            'classes': ('collapse',)
+        ('Détails du blacklist', {
+            'fields': ('blacklisted_at', 'expires_at', 'reason')
         }),
     )
     
-    def get_queryset(self, request):
-        return super().get_queryset(request).select_related('natural_reserve', 'national_park', 'created_by')
+    def has_add_permission(self, request):
+        """Empêcher l'ajout manuel de tokens blacklistés"""
+        return False
     
-    def get_zone_name(self, obj):
-        if obj.natural_reserve:
-            return obj.natural_reserve.name
-        elif obj.national_park:
-            return obj.national_park.name
-        return "Zone inconnue"
-    get_zone_name.short_description = "Nom de la zone"
-    
-    def get_zone_type(self, obj):
-        if obj.natural_reserve:
-            return "Réserve naturelle"
-        elif obj.national_park:
-            return "Parc national"
-        return "Type inconnu"
-    get_zone_type.short_description = "Type de zone"
+    def has_change_permission(self, request, obj=None):
+        """Empêcher la modification des tokens blacklistés"""
+        return False
