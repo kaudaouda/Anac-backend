@@ -418,3 +418,47 @@ class ProtectedAreaCoordinates(models.Model):
         elif self.national_park:
             return f"Coordonnée {self.order} - {self.national_park.name}"
         return f"Coordonnée {self.order}"
+
+
+class JWTBlacklistedToken(models.Model):
+    """
+    Modèle pour stocker les tokens JWT blacklistés
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    token = models.TextField(unique=True, verbose_name="Token JWT blacklisté")
+    blacklisted_at = models.DateTimeField(auto_now_add=True, verbose_name="Date de blacklist")
+    expires_at = models.DateTimeField(verbose_name="Date d'expiration")
+    user_id = models.UUIDField(verbose_name="ID de l'utilisateur")
+    token_type = models.CharField(
+        max_length=10, 
+        choices=[
+            ('access', 'Token d\'accès'),
+            ('refresh', 'Token de rafraîchissement')
+        ],
+        verbose_name="Type de token"
+    )
+    reason = models.CharField(
+        max_length=200, 
+        blank=True, 
+        verbose_name="Raison du blacklist"
+    )
+    
+    class Meta:
+        verbose_name = "Token JWT blacklisté"
+        verbose_name_plural = "Tokens JWT blacklistés"
+        db_table = 'jwt_blacklisted_token'
+        ordering = ['-blacklisted_at']
+        indexes = [
+            models.Index(fields=['user_id'], name='jwt_blackli_user_id_idx'),
+            models.Index(fields=['token_type'], name='jwt_blackli_token_ty_idx'),
+            models.Index(fields=['expires_at'], name='jwt_blackli_expires_idx'),
+        ]
+    
+    def __str__(self):
+        return f"Token {self.token_type} blacklisté pour l'utilisateur {self.user_id}"
+    
+    @property
+    def is_expired(self):
+        """Vérifier si le token est expiré"""
+        from django.utils import timezone
+        return timezone.now() > self.expires_at
